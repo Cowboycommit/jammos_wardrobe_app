@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wardrobe Canvas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: transparent; }
+  #canvas-wrapper {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    background: #F5F5F5;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    cursor: default;
+  }
+  #toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #fafafa;
+    border-bottom: 1px solid #ddd;
+    align-items: center;
+  }
+  #toolbar button {
+    padding: 4px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    color: #333;
+  }
+  #toolbar button:hover { background: #e8e8e8; }
+  #toolbar .info {
+    margin-left: auto;
+    font-size: 12px;
+    color: #888;
+  }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <button id="btn-pdf">Download Layout as PDF</button>
+  <span class="info" id="status-text">Click a component to select it. Drag to move.</span>
+</div>
+<div id="canvas-wrapper">
+  <canvas id="wardrobe-canvas"></canvas>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------------
+  // Streamlit component protocol
+  // ---------------------------------------------------------------------------
+  function sendToStreamlit(value) {
+    window.parent.postMessage({
+      type: "streamlit:setComponentValue",
+      value: value
+    }, "*");
+  }
+
+  function setFrameHeight(h) {
+    window.parent.postMessage({
+      type: "streamlit:setFrameHeight",
+      height: h
+    }, "*");
+  }
+
+  function notifyReady() {
+    window.parent.postMessage({ type: "streamlit:componentReady", apiVersion: 1 }, "*");
+  }
+
+  // ---------------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------------
+  var canvas = document.getElementById("wardrobe-canvas");
+  var ctx = canvas.getContext("2d");
+  var statusText = document.getElementById("status-text");
+
+  var state = {
+    frame: null,
+    components: [],
+    metadata: null,
+    selectedId: null,
+    unitSystem: "METRIC",
+    // interaction
+    dragging: false,
+    dragComp: null,
+    dragOffsetX: 0,
+    dragOffsetY: 0,
+    // display
+    scale: 1,
+    margin: 60,  // px margin around frame
+    dpr: window.devicePixelRatio || 1,
+    canvasW: 800,
+    canvasH: 600
+  };
+
+  var GRID_SIZE = 50; // mm
+  var COMPONENT_COLORS = {
+    DRAWER_UNIT: "#E8D5B7",
+    HANGING_SPACE: "#F5F0E6",
+    SHELF: "#D4A574",
+    OVERHEAD: "#D4C4B0",
+    DIVIDER: "#BC8F8F"
+  };
+
+  // ---------------------------------------------------------------------------
+  // Coordinate helpers
+  // ---------------------------------------------------------------------------
+  // mm -> canvas px (origin at bottom-left of frame, Y up in mm; canvas Y down)
+  function mmToCanvasX(mmX) {
+    return state.margin + mmX * state.scale;
+  }
+  function mmToCanvasY(mmY) {
+    // mmY is from bottom of frame; canvas Y=0 is top
+    return state.margin + (state.frame.height - mmY) * state.scale;
+  }
+  function canvasToMmX(cx) {
+    return (cx - state.margin) / state.scale;
+  }
+  function canvasToMmY(cy) {
+    return state.frame.height - (cy - state.margin) / state.scale;
+  }
+  function mmToCanvasW(mmW) { return mmW * state.scale; }
+  function mmToCanvasH(mmH) { return mmH * state.scale; }
+
+  // Snap value to grid
+  function snapToGrid(val) {
+    return Math.round(val / GRID_SIZE) * GRID_SIZE;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hit testing
+  // ---------------------------------------------------------------------------
+  function getPointerMm(e) {
+    var rect = canvas.getBoundingClientRect();
+    var cx, cy;
+    if (e.touches && e.touches.length > 0) {
+      cx = (e.touches[0].clientX - rect.left) * (canvas.width / state.dpr / rect.width);
+      cy = (e.touches[0].clientY - rect.top) * (canvas.height / state.dpr / rect.height);
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      cx = (e.changedTouches[0].clientX - rect.left) * (canvas.width / state.dpr / rect.width);
+      cy = (e.changedTouches[0].clientY - rect.top) * (canvas.height / state.dpr / rect.height);
+    } else {
+      cx = (e.clientX - rect.left) * (canvas.width / state.dpr / rect.width);
+      cy = (e.clientY - rect.top) * (canvas.height / state.dpr / rect.height);
+    }
+    return { mmX: canvasToMmX(cx), mmY: canvasToMmY(cy) };
+  }
+
+  function hitTest(mmX, mmY) {
+    // Iterate in reverse (topmost first)
+    for (var i = state.components.length - 1; i >= 0; i--) {
+      var c = state.components[i];
+      var cx = c.position.x;
+      var cy = c.position.y;
+      var cw = c.dimensions.width;
+      var ch = c.dimensions.height;
+      if (mmX >= cx && mmX <= cx + cw && mmY >= cy && mmY <= cy + ch) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawing
+  // ---------------------------------------------------------------------------
+  function draw() {
+    if (!state.frame) return;
+    var dpr = state.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, state.canvasW, state.canvasH);
+
+    drawGrid();
+    drawFrame();
+    drawPanels();
+    for (var i = 0; i < state.components.length; i++) {
+      drawComponent(state.components[i]);
+    }
+    drawDimensions();
+  }
+
+  function drawGrid() {
+    var f = state.frame;
+    ctx.save();
+    ctx.strokeStyle = "#E8E8E8";
+    ctx.lineWidth = 0.5;
+    // Vertical grid lines
+    for (var x = 0; x <= f.width; x += GRID_SIZE) {
+      var cx = mmToCanvasX(x);
+      var cy0 = mmToCanvasY(0);
+      var cy1 = mmToCanvasY(f.height);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy1);
+      ctx.lineTo(cx, cy0);
+      ctx.stroke();
+    }
+    // Horizontal grid lines
+    for (var y = 0; y <= f.height; y += GRID_SIZE) {
+      var cy = mmToCanvasY(y);
+      var cx0 = mmToCanvasX(0);
+      var cx1 = mmToCanvasX(f.width);
+      ctx.beginPath();
+      ctx.moveTo(cx0, cy);
+      ctx.lineTo(cx1, cy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFrame() {
+    var f = state.frame;
+    ctx.save();
+    var x = mmToCanvasX(0);
+    var y = mmToCanvasY(f.height);
+    var w = mmToCanvasW(f.width);
+    var h = mmToCanvasH(f.height);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, y, w, h, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPanels() {
+    var f = state.frame;
+    var pt = f.panel_thickness;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    // Left panel
+    fillRect("#DEB887", "#8B7355", 0, 0, pt, f.height, 0.5);
+    // Right panel
+    fillRect("#DEB887", "#8B7355", f.width - pt, 0, pt, f.height, 0.5);
+    ctx.globalAlpha = 0.3;
+    // Top clearance
+    fillRect("#DEB887", "#8B7355", 0, f.height - f.top_clearance, f.width, f.top_clearance, 0.5);
+    // Base
+    fillRect("#DEB887", "#8B7355", 0, 0, f.width, f.base_height, 0.5);
+    ctx.restore();
+  }
+
+  function fillRect(fill, stroke, mmX, mmY, mmW, mmH, lw) {
+    var x = mmToCanvasX(mmX);
+    var y = mmToCanvasY(mmY + mmH);
+    var w = mmToCanvasW(mmW);
+    var h = mmToCanvasH(mmH);
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw || 1;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  function drawComponent(comp) {
+    var color = COMPONENT_COLORS[comp.component_type] || "#CCCCCC";
+    var isSelected = comp.id === state.selectedId;
+    var edge = isSelected ? "#0078D7" : "#555555";
+    var lw = isSelected ? 2.5 : 1;
+
+    var px = mmToCanvasX(comp.position.x);
+    var py = mmToCanvasY(comp.position.y + comp.dimensions.height);
+    var pw = mmToCanvasW(comp.dimensions.width);
+    var ph = mmToCanvasH(comp.dimensions.height);
+
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = lw;
+    roundRect(ctx, px, py, pw, ph, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Draw type-specific details
+    drawComponentDetails(comp, px, py, pw, ph);
+
+    // Label
+    var label = comp.label || comp.name;
+    var fontSize = Math.max(9, Math.min(14, pw * 0.06));
+    ctx.fillStyle = "#333";
+    ctx.font = (isSelected ? "bold " : "") + fontSize + "px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Clip text
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, py, pw, ph);
+    ctx.clip();
+    ctx.fillText(label, px + pw / 2, py + ph / 2);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawComponentDetails(comp, px, py, pw, ph) {
+    var type = comp.component_type;
+    ctx.save();
+    // Clip to component bounds
+    ctx.beginPath();
+    ctx.rect(px, py, pw, ph);
+    ctx.clip();
+
+    if (type === "DRAWER_UNIT") {
+      drawDrawerDetails(comp, px, py, pw, ph);
+    } else if (type === "HANGING_SPACE") {
+      drawHangingDetails(comp, px, py, pw, ph);
+    } else if (type === "SHELF") {
+      drawShelfDetails(comp, px, py, pw, ph);
+    } else if (type === "OVERHEAD") {
+      drawOverheadDetails(comp, px, py, pw, ph);
+    }
+    ctx.restore();
+  }
+
+  function drawDrawerDetails(comp, px, py, pw, ph) {
+    var count = comp.drawer_count || 3;
+    var drawerH = ph / count;
+    ctx.strokeStyle = "#8B7355";
+    ctx.lineWidth = 0.8;
+    for (var i = 1; i < count; i++) {
+      var dy = py + i * drawerH;
+      ctx.beginPath();
+      ctx.moveTo(px, dy);
+      ctx.lineTo(px + pw, dy);
+      ctx.stroke();
+    }
+    // Handles
+    var handleStyle = comp.handle_style || "bar";
+    for (var j = 0; j < count; j++) {
+      var cy = py + j * drawerH + drawerH / 2;
+      if (handleStyle === "bar") {
+        var barW = pw * 0.3;
+        var bx = px + (pw - barW) / 2;
+        ctx.strokeStyle = "#666";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(bx, cy);
+        ctx.lineTo(bx + barW, cy);
+        ctx.stroke();
+      } else if (handleStyle === "knob") {
+        ctx.fillStyle = "#666";
+        ctx.beginPath();
+        ctx.arc(px + pw / 2, cy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawHangingDetails(comp, px, py, pw, ph) {
+    var railHeight = comp.rail_height || 1700;
+    var railType = comp.rail_type || "single";
+    // Rail Y in canvas coords
+    var railCanvasY = mmToCanvasY(comp.position.y + railHeight);
+    // Clamp to component bounds
+    if (railCanvasY < py) railCanvasY = py + ph * 0.1;
+    if (railCanvasY > py + ph) railCanvasY = py + ph * 0.9;
+
+    ctx.strokeStyle = "#A0A0A0";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    var rx0 = px + pw * 0.05;
+    var rx1 = px + pw * 0.95;
+    ctx.beginPath();
+    ctx.moveTo(rx0, railCanvasY);
+    ctx.lineTo(rx1, railCanvasY);
+    ctx.stroke();
+    // Support brackets
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(rx0, railCanvasY);
+    ctx.lineTo(rx0, railCanvasY - ph * 0.03);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(rx1, railCanvasY);
+    ctx.lineTo(rx1, railCanvasY - ph * 0.03);
+    ctx.stroke();
+
+    if (railType === "double") {
+      var rail2Y = py + ph * 0.55;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(rx0, rail2Y);
+      ctx.lineTo(rx1, rail2Y);
+      ctx.stroke();
+    }
+  }
+
+  function drawShelfDetails(comp, px, py, pw, ph) {
+    // Edge banding along bottom edge
+    var bottomY = py + ph;
+    ctx.strokeStyle = "#8B7355";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(px, bottomY);
+    ctx.lineTo(px + pw, bottomY);
+    ctx.stroke();
+  }
+
+  function drawOverheadDetails(comp, px, py, pw, ph) {
+    var doorCount = comp.door_count || 2;
+    var hasShelf = comp.has_shelf !== undefined ? comp.has_shelf : true;
+
+    // Door divisions
+    if (doorCount > 1) {
+      ctx.strokeStyle = "#8B7355";
+      ctx.lineWidth = 0.8;
+      var doorW = pw / doorCount;
+      for (var i = 1; i < doorCount; i++) {
+        var dx = px + i * doorW;
+        ctx.beginPath();
+        ctx.moveTo(dx, py);
+        ctx.lineTo(dx, py + ph);
+        ctx.stroke();
+      }
+    }
+    // Door handles
+    ctx.fillStyle = "#666";
+    for (var j = 0; j < doorCount; j++) {
+      var dw = pw / doorCount;
+      var hx = px + j * dw + dw / 2;
+      var hy = py + ph / 2;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Internal shelf (dashed)
+    if (hasShelf) {
+      var shelfY = py + ph * 0.5;
+      ctx.strokeStyle = "#999";
+      ctx.lineWidth = 0.7;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(px + 2, shelfY);
+      ctx.lineTo(px + pw - 2, shelfY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  function drawDimensions() {
+    var f = state.frame;
+    var fw = mmToCanvasW(f.width);
+    var fh = mmToCanvasH(f.height);
+    var fx = mmToCanvasX(0);
+    var fy = mmToCanvasY(f.height);
+
+    ctx.save();
+    ctx.strokeStyle = "#666";
+    ctx.fillStyle = "#666";
+    ctx.lineWidth = 1;
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+
+    // Width annotation (above frame)
+    var ay = fy - 12;
+    drawArrow(fx, ay, fx + fw, ay);
+    ctx.fillText(formatMm(f.width), fx + fw / 2, ay - 3);
+
+    // Height annotation (right of frame)
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    var ax = fx + fw + 12;
+    drawArrow(ax, fy, ax, fy + fh);
+    ctx.save();
+    ctx.translate(ax + 14, fy + fh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillText(formatMm(f.height), 0, 0);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawArrow(x1, y1, x2, y2) {
+    var headLen = 6;
+    var angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    // Arrowhead at start
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + headLen * Math.cos(angle - 0.5), y1 + headLen * Math.sin(angle - 0.5));
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + headLen * Math.cos(angle + 0.5), y1 + headLen * Math.sin(angle + 0.5));
+    ctx.stroke();
+    // Arrowhead at end
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle - 0.5), y2 - headLen * Math.sin(angle - 0.5));
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle + 0.5), y2 - headLen * Math.sin(angle + 0.5));
+    ctx.stroke();
+  }
+
+  function formatMm(val) {
+    if (state.unitSystem === "IMPERIAL") {
+      return (val / 25.4).toFixed(1) + '"';
+    }
+    if (val >= 1000) return (val / 10).toFixed(0) + " cm";
+    return val.toFixed(0) + " mm";
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Interaction
+  // ---------------------------------------------------------------------------
+  function onPointerDown(e) {
+    e.preventDefault();
+    var pos = getPointerMm(e);
+    var comp = hitTest(pos.mmX, pos.mmY);
+
+    if (comp) {
+      if (comp.locked) {
+        statusText.textContent = comp.name + " is locked.";
+        if (comp.id !== state.selectedId) {
+          state.selectedId = comp.id;
+          sendToStreamlit({ action: "select", id: comp.id });
+          draw();
+        }
+        return;
+      }
+      state.selectedId = comp.id;
+      state.dragging = true;
+      state.dragComp = comp;
+      state.dragOffsetX = pos.mmX - comp.position.x;
+      state.dragOffsetY = pos.mmY - comp.position.y;
+      canvas.style.cursor = "grabbing";
+      statusText.textContent = "Dragging " + comp.name;
+      sendToStreamlit({ action: "select", id: comp.id });
+    } else {
+      if (state.selectedId) {
+        state.selectedId = null;
+        sendToStreamlit({ action: "deselect" });
+        statusText.textContent = "Click a component to select it. Drag to move.";
+      }
+    }
+    draw();
+  }
+
+  function onPointerMove(e) {
+    e.preventDefault();
+    if (!state.dragging || !state.dragComp) {
+      // Hover cursor
+      var pos = getPointerMm(e);
+      var comp = hitTest(pos.mmX, pos.mmY);
+      canvas.style.cursor = comp ? (comp.locked ? "not-allowed" : "grab") : "default";
+      return;
+    }
+
+    var pos = getPointerMm(e);
+    var newX = snapToGrid(pos.mmX - state.dragOffsetX);
+    var newY = snapToGrid(pos.mmY - state.dragOffsetY);
+
+    // Constrain to internal frame area
+    var f = state.frame;
+    var comp = state.dragComp;
+    var minX = f.panel_thickness;
+    var maxX = f.width - f.panel_thickness - comp.dimensions.width;
+    var minY = f.base_height;
+    var maxY = f.height - f.top_clearance - comp.dimensions.height;
+
+    newX = Math.max(minX, Math.min(maxX, newX));
+    newY = Math.max(minY, Math.min(maxY, newY));
+
+    comp.position.x = newX;
+    comp.position.y = newY;
+    statusText.textContent = comp.name + " @ " + formatMm(newX) + ", " + formatMm(newY);
+    draw();
+  }
+
+  function onPointerUp(e) {
+    e.preventDefault();
+    if (state.dragging && state.dragComp) {
+      var comp = state.dragComp;
+      canvas.style.cursor = "grab";
+      statusText.textContent = comp.name + " placed at " + formatMm(comp.position.x) + ", " + formatMm(comp.position.y);
+      sendToStreamlit({
+        action: "move",
+        id: comp.id,
+        x: comp.position.x,
+        y: comp.position.y
+      });
+    }
+    state.dragging = false;
+    state.dragComp = null;
+  }
+
+  // Mouse events
+  canvas.addEventListener("mousedown", onPointerDown, false);
+  canvas.addEventListener("mousemove", onPointerMove, false);
+  canvas.addEventListener("mouseup", onPointerUp, false);
+  canvas.addEventListener("mouseleave", onPointerUp, false);
+
+  // Touch events
+  canvas.addEventListener("touchstart", onPointerDown, { passive: false });
+  canvas.addEventListener("touchmove", onPointerMove, { passive: false });
+  canvas.addEventListener("touchend", onPointerUp, { passive: false });
+  canvas.addEventListener("touchcancel", onPointerUp, { passive: false });
+
+  // ---------------------------------------------------------------------------
+  // PDF export
+  // ---------------------------------------------------------------------------
+  document.getElementById("btn-pdf").addEventListener("click", function () {
+    if (!state.frame) return;
+
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    var pageW = pdf.internal.pageSize.getWidth();
+    var pageH = pdf.internal.pageSize.getHeight();
+
+    // Title and metadata
+    pdf.setFontSize(16);
+    pdf.text("Wardrobe Layout", 14, 15);
+    pdf.setFontSize(10);
+    var meta = state.metadata || {};
+    var yOff = 22;
+    if (meta.project_name) { pdf.text("Project: " + meta.project_name, 14, yOff); yOff += 5; }
+    if (meta.client_name) { pdf.text("Client: " + meta.client_name, 14, yOff); yOff += 5; }
+    if (meta.client_phone) { pdf.text("Phone: " + meta.client_phone, 14, yOff); yOff += 5; }
+    var f = state.frame;
+    pdf.text("Frame: " + f.width + " x " + f.height + " x " + f.depth + " mm", 14, yOff);
+    yOff += 8;
+
+    // Canvas image
+    var imgData = canvas.toDataURL("image/png");
+    var imgMaxW = pageW - 28;
+    var imgMaxH = pageH - yOff - 40;
+    var aspect = canvas.width / canvas.height;
+    var imgW = imgMaxW;
+    var imgH = imgW / aspect;
+    if (imgH > imgMaxH) {
+      imgH = imgMaxH;
+      imgW = imgH * aspect;
+    }
+    pdf.addImage(imgData, "PNG", 14, yOff, imgW, imgH);
+    yOff += imgH + 6;
+
+    // Component summary table
+    if (state.components.length > 0 && yOff + 20 < pageH) {
+      pdf.setFontSize(11);
+      pdf.text("Component Summary", 14, yOff);
+      yOff += 5;
+      pdf.setFontSize(8);
+      // Header
+      pdf.setFont(undefined, "bold");
+      pdf.text("Name", 14, yOff);
+      pdf.text("Type", 70, yOff);
+      pdf.text("W (mm)", 120, yOff);
+      pdf.text("H (mm)", 145, yOff);
+      pdf.text("X (mm)", 170, yOff);
+      pdf.text("Y (mm)", 195, yOff);
+      yOff += 4;
+      pdf.setFont(undefined, "normal");
+      for (var i = 0; i < state.components.length; i++) {
+        if (yOff > pageH - 10) break;
+        var c = state.components[i];
+        pdf.text(c.name || "", 14, yOff);
+        pdf.text((c.component_type || "").replace("_", " "), 70, yOff);
+        pdf.text(String(Math.round(c.dimensions.width)), 120, yOff);
+        pdf.text(String(Math.round(c.dimensions.height)), 145, yOff);
+        pdf.text(String(Math.round(c.position.x)), 170, yOff);
+        pdf.text(String(Math.round(c.position.y)), 195, yOff);
+        yOff += 4;
+      }
+    }
+
+    var filename = (meta.project_name || "wardrobe_layout") + ".pdf";
+    pdf.save(filename);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Resize handling
+  // ---------------------------------------------------------------------------
+  function resizeCanvas() {
+    if (!state.frame) return;
+    var wrapper = document.getElementById("canvas-wrapper");
+    var displayW = wrapper.clientWidth;
+    var dpr = state.dpr;
+
+    // Calculate scale: fit frame + margin into available width
+    var totalMmW = state.frame.width + 100; // extra for dimension annotations
+    state.scale = (displayW - 2 * state.margin) / state.frame.width;
+    var displayH = state.frame.height * state.scale + 2 * state.margin + 30;
+
+    state.canvasW = displayW;
+    state.canvasH = displayH;
+    canvas.width = displayW * dpr;
+    canvas.height = displayH * dpr;
+    canvas.style.width = displayW + "px";
+    canvas.style.height = displayH + "px";
+
+    draw();
+    setFrameHeight(displayH + 46); // toolbar height included
+  }
+
+  var resizeTimer;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resizeCanvas, 100);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Streamlit message handler
+  // ---------------------------------------------------------------------------
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+
+    if (event.data.type === "streamlit:render") {
+      var args = event.data.args;
+      if (!args) return;
+
+      state.frame = args.frame || state.frame;
+      state.components = args.components || [];
+      state.metadata = args.metadata || {};
+      state.selectedId = args.selected_id || null;
+      state.unitSystem = args.unit_system || "METRIC";
+
+      resizeCanvas();
+    }
+  });
+
+  // Signal readiness
+  notifyReady();
+})();
+</script>
+</body>
+</html>
