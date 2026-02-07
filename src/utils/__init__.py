@@ -14,7 +14,6 @@ from .units import (
 from .geometry import (
     point_in_rect,
     rects_intersect,
-    snap_to_grid,
     calculate_scale_to_fit,
     rect_contains_rect,
     clamp,
@@ -24,7 +23,6 @@ from .config import (
     APP_NAME,
     VERSION,
     FILE_EXTENSION,
-    DEFAULT_GRID_SIZE,
     DEFAULT_FRAME_WIDTH,
     DEFAULT_FRAME_HEIGHT,
     DEFAULT_FRAME_DEPTH,
@@ -40,7 +38,6 @@ from .config import (
     MIN_ZOOM_LEVEL,
     MAX_ZOOM_LEVEL,
     ZOOM_STEP,
-    SNAP_TOLERANCE,
     MAX_UNDO_HISTORY,
 )
 
@@ -57,7 +54,6 @@ __all__ = [
     # Geometry
     "point_in_rect",
     "rects_intersect",
-    "snap_to_grid",
     "calculate_scale_to_fit",
     "rect_contains_rect",
     "clamp",
@@ -66,7 +62,6 @@ __all__ = [
     "VERSION",
     "FILE_EXTENSION",
     # Config - Defaults
-    "DEFAULT_GRID_SIZE",
     "DEFAULT_FRAME_WIDTH",
     "DEFAULT_FRAME_HEIGHT",
     "DEFAULT_FRAME_DEPTH",
@@ -84,6 +79,5 @@ __all__ = [
     "MIN_ZOOM_LEVEL",
     "MAX_ZOOM_LEVEL",
     "ZOOM_STEP",
-    "SNAP_TOLERANCE",
     "MAX_UNDO_HISTORY",
 ]

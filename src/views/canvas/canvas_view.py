@@ -97,14 +97,6 @@ class CanvasView(QGraphicsView):
         """Get current zoom level."""
         return self._zoom_level
 
-    def set_grid_visible(self, visible: bool):
-        """Show or hide the grid."""
-        self._scene.set_grid_visible(visible)
-
-    def set_snap_enabled(self, enabled: bool):
-        """Enable or disable snap to grid."""
-        self._scene.set_snap_enabled(enabled)
-
     def _parse_component_type(self, mime_text: str):
         """Parse component type from drag mime data."""
         try:
@@ -145,7 +137,7 @@ class CanvasView(QGraphicsView):
         super().dragLeaveEvent(event)
 
     def dropEvent(self, event):
-        """Handle component drop - emit signal with type and snapped position."""
+        """Handle component drop - emit signal with type and position."""
         mime = event.mimeData()
         if not mime or not mime.hasText():
             super().dropEvent(event)
@@ -158,9 +150,8 @@ class CanvasView(QGraphicsView):
 
         self._scene.hide_drop_preview()
 
-        # Map to scene coordinates and snap
+        # Map to scene coordinates
         scene_pos = self.mapToScene(event.position().toPoint())
-        snapped = self._scene.snap_position(scene_pos)
 
         event.acceptProposedAction()
-        self.component_dropped.emit(comp_type, snapped.x(), snapped.y())
+        self.component_dropped.emit(comp_type, scene_pos.x(), scene_pos.y())

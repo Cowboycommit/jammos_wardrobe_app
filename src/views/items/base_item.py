@@ -111,17 +111,8 @@ class BaseWardrobeItem(QGraphicsRectItem):
         super().mouseReleaseEvent(event)
 
     def itemChange(self, change, value):
-        """Handle item position changes - snap to grid during drag."""
-        if change == QGraphicsItem.ItemPositionChange:
-            # Snap to grid if scene supports it
-            scene = self.scene()
-            if scene and hasattr(scene, 'snap_to_grid') and scene.snap_to_grid:
-                snapped = scene.snap_position(value)
-                # Update model with snapped position
-                self.component.position.x = snapped.x()
-                self.component.position.y = snapped.y()
-                return snapped
-        elif change == QGraphicsItem.ItemPositionHasChanged:
+        """Handle item position changes."""
+        if change == QGraphicsItem.ItemPositionHasChanged:
             self.component.position.x = value.x()
             self.component.position.y = value.y()
         return super().itemChange(change, value)

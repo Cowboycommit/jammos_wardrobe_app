@@ -48,22 +48,6 @@ def rects_intersect(
     return True
 
 
-def snap_to_grid(value: float, grid_size: float) -> float:
-    """
-    Snap a value to the nearest grid point.
-
-    Args:
-        value: The value to snap
-        grid_size: The grid spacing
-
-    Returns:
-        The value snapped to the nearest grid point
-    """
-    if grid_size <= 0:
-        return value
-    return round(value / grid_size) * grid_size
-
-
 def calculate_scale_to_fit(
     content_w: float,
     content_h: float,
