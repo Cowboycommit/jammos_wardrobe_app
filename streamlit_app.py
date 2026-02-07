@@ -696,23 +696,36 @@ def main():
     # Handle actions coming back from the canvas
     if canvas_result is not None and isinstance(canvas_result, dict):
         action = canvas_result.get("action")
-        if action == "move":
-            comp_id = canvas_result.get("id")
-            comp = project.get_component(comp_id)
-            if comp is not None and not comp.locked:
-                comp.position.x = float(canvas_result.get("x", comp.position.x))
-                comp.position.y = float(canvas_result.get("y", comp.position.y))
-                project.metadata.modified_date = datetime.now().isoformat()
-                st.rerun()
-        elif action == "select":
-            new_sel = canvas_result.get("id")
-            if new_sel != st.session_state.get("selected_id"):
-                st.session_state["selected_id"] = new_sel
-                st.rerun()
-        elif action == "deselect":
-            if st.session_state.get("selected_id") is not None:
-                st.session_state.pop("selected_id", None)
-                st.rerun()
+
+        # Deduplicate: skip if this is the same action we already processed
+        action_key = (action, canvas_result.get("id"),
+                      canvas_result.get("x"), canvas_result.get("y"))
+        if action_key == st.session_state.get("_last_canvas_action"):
+            pass  # already processed — do nothing
+        else:
+            st.session_state["_last_canvas_action"] = action_key
+
+            if action == "move":
+                comp_id = canvas_result.get("id")
+                comp = project.get_component(comp_id)
+                if comp is not None and not comp.locked:
+                    new_x = float(canvas_result.get("x", comp.position.x))
+                    new_y = float(canvas_result.get("y", comp.position.y))
+                    # Only rerun if position actually changed
+                    if new_x != comp.position.x or new_y != comp.position.y:
+                        comp.position.x = new_x
+                        comp.position.y = new_y
+                        project.metadata.modified_date = datetime.now().isoformat()
+                        st.rerun()
+            elif action == "select":
+                new_sel = canvas_result.get("id")
+                if new_sel != st.session_state.get("selected_id"):
+                    st.session_state["selected_id"] = new_sel
+                    st.rerun()
+            elif action == "deselect":
+                if st.session_state.get("selected_id") is not None:
+                    st.session_state.pop("selected_id", None)
+                    st.rerun()
 
     # Component list + property editor
     col_list, col_props = st.columns([1, 2])
