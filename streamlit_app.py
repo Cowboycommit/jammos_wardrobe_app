@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import streamlit as st
+import streamlit.components.v1 as st_components
 
 from src.models.enums import ComponentType, UnitSystem
 from src.models.component import Component, Dimensions, Position
@@ -31,6 +32,14 @@ from src.utils.config import (
     MAX_FRAME_DEPTH,
 )
 from src.utils.units import format_dimension, mm_to_inches, mm_to_cm
+
+# ---------------------------------------------------------------------------
+# Bidirectional Streamlit custom component for interactive wardrobe canvas
+# ---------------------------------------------------------------------------
+_CANVAS_COMPONENT_DIR = Path(__file__).parent / "src" / "streamlit_components" / "wardrobe_canvas"
+_wardrobe_canvas_component = st_components.declare_component(
+    "wardrobe_canvas", path=str(_CANVAS_COMPONENT_DIR)
+)
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +76,73 @@ def _fmt(mm: float) -> str:
     return format_dimension(mm, _use_metric())
 
 
+def _serialize_component_for_canvas(comp: Component) -> dict:
+    """Serialize a component into a plain dict the JS canvas can consume."""
+    data = {
+        "id": comp.id,
+        "component_type": comp.component_type.name,
+        "name": comp.name,
+        "label": comp.label or comp.name,
+        "locked": comp.locked,
+        "dimensions": {
+            "width": comp.dimensions.width,
+            "height": comp.dimensions.height,
+            "depth": comp.dimensions.depth,
+        },
+        "position": {
+            "x": comp.position.x,
+            "y": comp.position.y,
+        },
+    }
+    if isinstance(comp, DrawerUnit):
+        data["drawer_count"] = comp.drawer_count
+        data["handle_style"] = comp.handle_style
+    elif isinstance(comp, HangingSpace):
+        data["rail_height"] = comp.rail_height
+        data["rail_type"] = comp.rail_type
+    elif isinstance(comp, Shelf):
+        data["adjustable"] = comp.adjustable
+    elif isinstance(comp, Overhead):
+        data["door_type"] = comp.door_type
+        data["door_count"] = comp.door_count
+        data["has_shelf"] = comp.has_shelf
+    return data
+
+
+def wardrobe_canvas(project: WardrobeProject, selected_id: str = None, key: str = "wardrobe_canvas"):
+    """Render the interactive wardrobe canvas custom component.
+
+    Returns a dict with ``action`` (``"move"``, ``"select"``, or ``"deselect"``)
+    when the user interacts with the canvas, otherwise ``None``.
+    """
+    frame = project.frame
+    components_data = [_serialize_component_for_canvas(c) for c in project.components]
+    meta = project.metadata
+
+    return _wardrobe_canvas_component(
+        frame={
+            "width": frame.width,
+            "height": frame.height,
+            "depth": frame.depth,
+            "panel_thickness": frame.panel_thickness,
+            "top_clearance": frame.top_clearance,
+            "base_height": frame.base_height,
+        },
+        components=components_data,
+        metadata={
+            "project_name": meta.project_name,
+            "client_name": meta.client_name,
+            "client_phone": meta.client_phone,
+        },
+        selected_id=selected_id,
+        unit_system=project.unit_system.name,
+        key=key,
+        default=None,
+    )
+
+
 # ---------------------------------------------------------------------------
-# Rendering
+# Rendering (matplotlib — kept for sidebar PNG/PDF export)
 # ---------------------------------------------------------------------------
 
 def _draw_component_details(ax, comp, scale, origin_y):
@@ -607,10 +681,33 @@ def main():
     # --- Main area ---
     project = _get_project()
 
-    # Canvas
-    fig = render_wardrobe(project, st.session_state.get("selected_id"))
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
+    # Interactive canvas (bidirectional custom component)
+    canvas_result = wardrobe_canvas(
+        project,
+        selected_id=st.session_state.get("selected_id"),
+        key="wardrobe_canvas",
+    )
+
+    # Handle actions coming back from the canvas
+    if canvas_result is not None and isinstance(canvas_result, dict):
+        action = canvas_result.get("action")
+        if action == "move":
+            comp_id = canvas_result.get("id")
+            comp = project.get_component(comp_id)
+            if comp is not None and not comp.locked:
+                comp.position.x = float(canvas_result.get("x", comp.position.x))
+                comp.position.y = float(canvas_result.get("y", comp.position.y))
+                project.metadata.modified_date = datetime.now().isoformat()
+                st.rerun()
+        elif action == "select":
+            new_sel = canvas_result.get("id")
+            if new_sel != st.session_state.get("selected_id"):
+                st.session_state["selected_id"] = new_sel
+                st.rerun()
+        elif action == "deselect":
+            if st.session_state.get("selected_id") is not None:
+                st.session_state.pop("selected_id", None)
+                st.rerun()
 
     # Component list + property editor
     col_list, col_props = st.columns([1, 2])
