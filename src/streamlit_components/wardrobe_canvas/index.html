@@ -711,21 +711,31 @@
     var dpr = state.dpr;
     var toolbarH = 46;
 
-    // Scale so the wardrobe frame fills the available width
-    state.scale = (displayW - 2 * state.margin) / state.frame.width;
+    // Use the monitor's available screen height to drive scaling so the
+    // entire canvas (top to bottom) is always visible without scrolling.
+    // screen.availHeight works reliably inside iframes unlike innerHeight.
+    var streamlitChromeH = 260; // Streamlit header, title, padding, component list below
+    var availScreenH = screen.availHeight - streamlitChromeH - toolbarH;
 
-    // Canvas height is derived from the frame aspect ratio at this scale
+    // Height is the primary scaler
+    var scaleByHeight = (availScreenH - 2 * state.margin - 30) / state.frame.height;
+    // Cap by width so nothing overflows horizontally
+    var scaleByWidth = (displayW - 2 * state.margin) / state.frame.width;
+    state.scale = Math.min(scaleByHeight, scaleByWidth);
+
     var displayH = state.frame.height * state.scale + 2 * state.margin + 30;
+    // Width the canvas actually needs (may be narrower than container)
+    var neededW = state.frame.width * state.scale + 2 * state.margin;
+    var canvasDisplayW = Math.max(neededW, displayW);
 
-    state.canvasW = displayW;
+    state.canvasW = canvasDisplayW;
     state.canvasH = displayH;
-    canvas.width = displayW * dpr;
+    canvas.width = canvasDisplayW * dpr;
     canvas.height = displayH * dpr;
-    canvas.style.width = displayW + "px";
+    canvas.style.width = canvasDisplayW + "px";
     canvas.style.height = displayH + "px";
 
     draw();
-    // Tell Streamlit how tall the iframe should be so the full canvas is visible
     setFrameHeight(displayH + toolbarH);
   }
 
