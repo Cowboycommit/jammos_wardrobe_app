@@ -710,9 +710,28 @@
     var displayW = wrapper.clientWidth;
     var dpr = state.dpr;
 
-    // Calculate scale: fit frame + margin into available width
-    var totalMmW = state.frame.width + 100; // extra for dimension annotations
-    state.scale = (displayW - 2 * state.margin) / state.frame.width;
+    // Responsive margin based on viewport width
+    if (displayW < 768) {
+      state.margin = 20;
+    } else if (displayW < 1024) {
+      state.margin = 30;
+    } else if (displayW < 1920) {
+      state.margin = 50;
+    } else {
+      state.margin = 60;
+    }
+
+    // Determine available viewport height (account for toolbar + Streamlit chrome)
+    var toolbarH = 46;
+    var streamlitChromeH = 100; // approximate header/padding from Streamlit
+    var availableH = window.innerHeight - toolbarH - streamlitChromeH;
+    if (availableH < 200) availableH = 200; // safety minimum
+
+    // Scale to fit both width AND height so the frame is fully visible
+    var scaleByWidth = (displayW - 2 * state.margin) / state.frame.width;
+    var scaleByHeight = (availableH - 2 * state.margin - 30) / state.frame.height;
+    state.scale = Math.min(scaleByWidth, scaleByHeight);
+
     var displayH = state.frame.height * state.scale + 2 * state.margin + 30;
 
     state.canvasW = displayW;
@@ -723,13 +742,17 @@
     canvas.style.height = displayH + "px";
 
     draw();
-    setFrameHeight(displayH + 46); // toolbar height included
+    setFrameHeight(displayH + toolbarH);
   }
 
   var resizeTimer;
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(resizeCanvas, 100);
+  });
+  window.addEventListener("orientationchange", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resizeCanvas, 200);
   });
 
   // ---------------------------------------------------------------------------
