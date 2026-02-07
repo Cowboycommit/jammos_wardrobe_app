@@ -535,6 +535,11 @@ def component_property_editor():
 
     st.subheader(f"Edit: {comp.name}")
 
+    # Include component ID in widget keys so that switching between components
+    # resets widget state instead of carrying over stale values from the
+    # previously-selected component (which caused dimension corruption).
+    cid = comp.id
+
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button("Delete Component", type="primary"):
@@ -543,32 +548,32 @@ def component_property_editor():
             st.rerun()
 
     with col1:
-        comp.name = st.text_input("Name", value=comp.name, key="prop_name")
+        comp.name = st.text_input("Name", value=comp.name, key=f"prop_name_{cid}")
         comp.label = st.text_input("Label", value=comp.label or "",
-                                   key="prop_label") or None
+                                   key=f"prop_label_{cid}") or None
 
     # Dimensions
     st.markdown("**Dimensions**")
     dc1, dc2, dc3 = st.columns(3)
     comp.dimensions.width = dc1.number_input(
         "Width (mm)", min_value=50.0, max_value=5000.0,
-        value=float(comp.dimensions.width), step=10.0, key="prop_w")
+        value=float(comp.dimensions.width), step=10.0, key=f"prop_w_{cid}")
     comp.dimensions.height = dc2.number_input(
         "Height (mm)", min_value=1.0, max_value=5000.0,
-        value=float(comp.dimensions.height), step=10.0, key="prop_h")
+        value=float(comp.dimensions.height), step=10.0, key=f"prop_h_{cid}")
     comp.dimensions.depth = dc3.number_input(
         "Depth (mm)", min_value=50.0, max_value=1000.0,
-        value=float(comp.dimensions.depth), step=10.0, key="prop_d")
+        value=float(comp.dimensions.depth), step=10.0, key=f"prop_d_{cid}")
 
     # Position
     st.markdown("**Position**")
     pc1, pc2 = st.columns(2)
     comp.position.x = pc1.number_input(
         "X (mm)", min_value=0.0, max_value=5000.0,
-        value=float(comp.position.x), step=10.0, key="prop_x")
+        value=float(comp.position.x), step=10.0, key=f"prop_x_{cid}")
     comp.position.y = pc2.number_input(
         "Y (mm)", min_value=0.0, max_value=5000.0,
-        value=float(comp.position.y), step=10.0, key="prop_y")
+        value=float(comp.position.y), step=10.0, key=f"prop_y_{cid}")
 
     # Type-specific properties
     if isinstance(comp, DrawerUnit):
@@ -576,12 +581,12 @@ def component_property_editor():
         tc1, tc2 = st.columns(2)
         comp.drawer_count = int(tc1.number_input(
             "Drawer Count", min_value=1, max_value=10,
-            value=comp.drawer_count, step=1, key="prop_dc"))
+            value=comp.drawer_count, step=1, key=f"prop_dc_{cid}"))
         comp.handle_style = tc2.selectbox(
             "Handle Style",
             options=["bar", "knob", "recessed", "none"],
             index=["bar", "knob", "recessed", "none"].index(comp.handle_style),
-            key="prop_hs",
+            key=f"prop_hs_{cid}",
         )
 
     elif isinstance(comp, HangingSpace):
@@ -590,24 +595,24 @@ def component_property_editor():
         comp.rail_type = tc1.selectbox(
             "Rail Type", options=["single", "double"],
             index=["single", "double"].index(comp.rail_type),
-            key="prop_rt",
+            key=f"prop_rt_{cid}",
         )
         comp.clothing_type = tc2.selectbox(
             "Clothing Type",
             options=["full_length", "half_length", "shirts"],
             index=["full_length", "half_length", "shirts"].index(
                 comp.clothing_type),
-            key="prop_ct",
+            key=f"prop_ct_{cid}",
         )
 
     elif isinstance(comp, Shelf):
         st.markdown("**Shelf Options**")
         tc1, tc2 = st.columns(2)
         comp.adjustable = tc1.checkbox("Adjustable", value=comp.adjustable,
-                                       key="prop_adj")
+                                       key=f"prop_adj_{cid}")
         comp.load_capacity = tc2.number_input(
             "Load Capacity (kg)", min_value=1.0, max_value=200.0,
-            value=float(comp.load_capacity), step=5.0, key="prop_lc")
+            value=float(comp.load_capacity), step=5.0, key=f"prop_lc_{cid}")
 
     elif isinstance(comp, Overhead):
         st.markdown("**Overhead Options**")
@@ -615,17 +620,17 @@ def component_property_editor():
         comp.door_type = tc1.selectbox(
             "Door Type", options=["hinged", "lift_up", "sliding"],
             index=["hinged", "lift_up", "sliding"].index(comp.door_type),
-            key="prop_dt",
+            key=f"prop_dt_{cid}",
         )
         comp.door_count = int(tc2.number_input(
             "Door Count", min_value=1, max_value=4,
-            value=comp.door_count, step=1, key="prop_drc"))
+            value=comp.door_count, step=1, key=f"prop_drc_{cid}"))
         comp.has_shelf = tc3.checkbox("Has Shelf", value=comp.has_shelf,
-                                      key="prop_hs2")
+                                      key=f"prop_hs2_{cid}")
 
-    comp.locked = st.checkbox("Locked", value=comp.locked, key="prop_locked")
+    comp.locked = st.checkbox("Locked", value=comp.locked, key=f"prop_locked_{cid}")
     comp.notes = st.text_area("Notes", value=comp.notes or "",
-                              key="prop_notes", height=60) or None
+                              key=f"prop_notes_{cid}", height=60) or None
 
 
 # ---------------------------------------------------------------------------
