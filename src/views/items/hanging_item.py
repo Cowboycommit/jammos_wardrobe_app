@@ -19,6 +19,7 @@ class HangingItem(BaseWardrobeItem):
 
         rect = self.rect()
         hanging: HangingSpace = self.component
+        offset = self._get_depth_offset()
 
         # Draw rail(s)
         rail_pen = QPen(QColor("#666666"), 3)
@@ -45,3 +46,24 @@ class HangingItem(BaseWardrobeItem):
                 rail_y2 = rect.bottom() - 50
             painter.drawLine(int(rect.left() + margin), int(rail_y2),
                             int(rect.right() - margin), int(rail_y2))
+
+        # Extend rail lines onto the 3D right face
+        if offset > 0:
+            rail_3d_pen = QPen(QColor("#555555"), 2)
+            painter.setPen(rail_3d_pen)
+
+            # Main rail extends onto right face
+            painter.drawLine(
+                int(rect.right() - margin), int(rail_y),
+                int(rect.right() - margin + offset), int(rail_y + offset)
+            )
+
+            # Second rail extends if double
+            if hanging.rail_type == "double":
+                rail_y2 = rail_y - 450
+                if rail_y2 > rect.bottom():
+                    rail_y2 = rect.bottom() - 50
+                painter.drawLine(
+                    int(rect.right() - margin), int(rail_y2),
+                    int(rect.right() - margin + offset), int(rail_y2 + offset)
+                )

@@ -19,6 +19,7 @@ class OverheadItem(BaseWardrobeItem):
 
         overhead: Overhead = self.component
         rect = self.rect()
+        offset = self._get_depth_offset()
 
         door_pen = QPen(QColor("#8B7355"), 2)
         painter.setPen(door_pen)
@@ -44,3 +45,17 @@ class OverheadItem(BaseWardrobeItem):
             painter.setPen(dash_pen)
             painter.drawLine(int(rect.left() + 5), int(shelf_y),
                             int(rect.right() - 5), int(shelf_y))
+
+        # Extend door division lines onto the 3D top face
+        if offset > 0:
+            perspective_pen = QPen(QColor("#6B5335"), 1)
+            painter.setPen(perspective_pen)
+
+            for i in range(1, overhead.door_count):
+                x = rect.left() + i * door_width
+                # Line from front-top edge to projected point at 45 degrees
+                # rect.bottom() = visual top due to Y-flip
+                painter.drawLine(
+                    int(x), int(rect.bottom()),
+                    int(x + offset), int(rect.bottom() + offset)
+                )
