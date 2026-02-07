@@ -89,15 +89,6 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self._create_action("Zoom &In", "Ctrl++", self.zoom_in))
         view_menu.addAction(self._create_action("Zoom &Out", "Ctrl+-", self.zoom_out))
         view_menu.addAction(self._create_action("&Fit to Window", "Ctrl+0", self.fit_to_window))
-        view_menu.addSeparator()
-        self.grid_action = self._create_action("Show &Grid", "Ctrl+G", self.toggle_grid, checkable=True)
-        self.grid_action.setChecked(True)
-        view_menu.addAction(self.grid_action)
-
-        self.snap_action = self._create_action("&Snap to Grid", "Ctrl+Shift+G", self.toggle_snap, checkable=True)
-        self.snap_action.setChecked(True)
-        view_menu.addAction(self.snap_action)
-
         # Help menu
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self._create_action("&About", "", self.show_about))
@@ -196,14 +187,11 @@ class MainWindow(QMainWindow):
             self.statusbar.showMessage(f"Component type {component_type} not yet implemented")
             return
 
-        # Snap position to grid
-        scene = self.canvas_view.canvas_scene
-        from PySide6.QtCore import QPointF
-        snapped = scene.snap_position(QPointF(x, y))
-        component.position.x = snapped.x()
-        component.position.y = snapped.y()
-        item.setPos(snapped.x(), snapped.y())
+        component.position.x = x
+        component.position.y = y
+        item.setPos(x, y)
 
+        scene = self.canvas_view.canvas_scene
         scene.addItem(item)
         self.project.add_component(component)
 
@@ -352,12 +340,6 @@ class MainWindow(QMainWindow):
 
     def fit_to_window(self):
         self.canvas_view.fit_to_frame()
-
-    def toggle_grid(self):
-        self.canvas_view.set_grid_visible(self.grid_action.isChecked())
-
-    def toggle_snap(self):
-        self.canvas_view.set_snap_enabled(self.snap_action.isChecked())
 
     def show_about(self):
         QMessageBox.about(self, "About Wardrobe Planner",

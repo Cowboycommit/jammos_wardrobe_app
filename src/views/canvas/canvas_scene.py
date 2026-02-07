@@ -1,7 +1,7 @@
 """Graphics scene for the wardrobe canvas."""
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsRectItem
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF
-from PySide6.QtGui import QPen, QBrush, QColor, QPainter
+from PySide6.QtWidgets import QGraphicsScene
+from PySide6.QtCore import Qt, Signal, QPointF
+from PySide6.QtGui import QPen, QBrush, QColor
 
 
 class CanvasScene(QGraphicsScene):
@@ -21,10 +21,6 @@ class CanvasScene(QGraphicsScene):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
-        self.grid_size = 50.0  # 50mm grid
-        self.snap_to_grid = True
-        self.show_grid = True
 
         # Wardrobe frame dimensions
         self.frame_width = 2400.0
@@ -70,63 +66,19 @@ class CanvasScene(QGraphicsScene):
         self.frame_rect.setRect(0, 0, width, height)
         self.update()
 
-    def drawBackground(self, painter: QPainter, rect: QRectF):
-        """Draw grid in background."""
-        super().drawBackground(painter, rect)
-
-        if not self.show_grid:
-            return
-
-        grid_pen = QPen(QColor("#E0E0E0"), 0.5)
-        painter.setPen(grid_pen)
-
-        left = int(rect.left() // self.grid_size) * self.grid_size
-        top = int(rect.top() // self.grid_size) * self.grid_size
-
-        # Vertical lines
-        x = left
-        while x < rect.right():
-            painter.drawLine(int(x), int(rect.top()), int(x), int(rect.bottom()))
-            x += self.grid_size
-
-        # Horizontal lines
-        y = top
-        while y < rect.bottom():
-            painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
-            y += self.grid_size
-
-    def snap_position(self, pos: QPointF) -> QPointF:
-        """Snap position to grid if enabled."""
-        if not self.snap_to_grid:
-            return pos
-
-        x = round(pos.x() / self.grid_size) * self.grid_size
-        y = round(pos.y() / self.grid_size) * self.grid_size
-        return QPointF(x, y)
-
-    def set_grid_visible(self, visible: bool):
-        """Show or hide the grid."""
-        self.show_grid = visible
-        self.update()
-
-    def set_snap_enabled(self, enabled: bool):
-        """Enable or disable snap to grid."""
-        self.snap_to_grid = enabled
-
     def show_drop_preview(self, pos: QPointF, width: float, height: float):
         """Show a preview rectangle where a dropped component will land."""
-        snapped = self.snap_position(pos)
         if self._drop_preview is None:
             preview_pen = QPen(QColor("#0066CC"), 2, Qt.DashLine)
             preview_brush = QBrush(QColor(0, 102, 204, 40))
             self._drop_preview = self.addRect(
-                snapped.x(), snapped.y(), width, height,
+                pos.x(), pos.y(), width, height,
                 preview_pen, preview_brush
             )
             self._drop_preview.setZValue(1000)
         else:
             self._drop_preview.setRect(
-                snapped.x(), snapped.y(), width, height
+                pos.x(), pos.y(), width, height
             )
 
     def hide_drop_preview(self):

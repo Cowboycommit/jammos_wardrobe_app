@@ -5,9 +5,6 @@ APP_NAME = "Wardrobe Planner"
 VERSION = "1.0.0"
 FILE_EXTENSION = ".wdp"
 
-# Default grid settings (in millimeters)
-DEFAULT_GRID_SIZE = 50.0  # 50mm grid
-
 # Default frame dimensions (in millimeters)
 DEFAULT_FRAME_WIDTH = 2400.0
 DEFAULT_FRAME_HEIGHT = 2400.0
@@ -26,7 +23,6 @@ DEFAULT_COLORS = {
     "door": "#CD853F",            # Peru for doors
     "rail": "#A0A0A0",            # Gray for hanging rails
     "background": "#FFFFFF",      # White background
-    "grid": "#E0E0E0",            # Light gray for grid lines
     "selection": "#0078D7",       # Blue for selection highlight
     "hover": "#ADD8E6",           # Light blue for hover state
 }
@@ -44,9 +40,6 @@ DEFAULT_ZOOM_LEVEL = 1.0
 MIN_ZOOM_LEVEL = 0.1
 MAX_ZOOM_LEVEL = 5.0
 ZOOM_STEP = 0.1
-
-# Snap settings
-SNAP_TOLERANCE = 10.0  # Distance in mm within which snapping occurs
 
 # Undo/Redo settings
 MAX_UNDO_HISTORY = 50
