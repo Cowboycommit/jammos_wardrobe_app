@@ -12,6 +12,11 @@ class Dimensions:
     height: float
     depth: float
 
+    def __post_init__(self):
+        self.width = float(self.width)
+        self.height = float(self.height)
+        self.depth = float(self.depth)
+
     def to_dict(self) -> Dict[str, float]:
         """Convert dimensions to dictionary for JSON serialization."""
         return {
@@ -35,6 +40,10 @@ class Position:
     """Position of a component within the wardrobe (in millimeters)."""
     x: float
     y: float
+
+    def __post_init__(self):
+        self.x = float(self.x)
+        self.y = float(self.y)
 
     def to_dict(self) -> Dict[str, float]:
         """Convert position to dictionary for JSON serialization."""
