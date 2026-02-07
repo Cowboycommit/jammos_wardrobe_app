@@ -336,22 +336,28 @@ def sidebar_frame_settings():
 
     with st.sidebar.expander("Frame Settings", expanded=False):
         new_w = st.number_input("Width (mm)", min_value=MIN_FRAME_WIDTH,
-                                max_value=MAX_FRAME_WIDTH, value=frame.width,
+                                max_value=MAX_FRAME_WIDTH,
+                                value=float(frame.width),
                                 step=50.0, key="frame_w")
         new_h = st.number_input("Height (mm)", min_value=MIN_FRAME_HEIGHT,
-                                max_value=MAX_FRAME_HEIGHT, value=frame.height,
+                                max_value=MAX_FRAME_HEIGHT,
+                                value=float(frame.height),
                                 step=50.0, key="frame_h")
         new_d = st.number_input("Depth (mm)", min_value=MIN_FRAME_DEPTH,
-                                max_value=MAX_FRAME_DEPTH, value=frame.depth,
+                                max_value=MAX_FRAME_DEPTH,
+                                value=float(frame.depth),
                                 step=50.0, key="frame_d")
         new_pt = st.number_input("Panel Thickness (mm)", min_value=10.0,
-                                 max_value=50.0, value=frame.panel_thickness,
+                                 max_value=50.0,
+                                 value=float(frame.panel_thickness),
                                  step=1.0, key="frame_pt")
         new_base = st.number_input("Base Height (mm)", min_value=0.0,
-                                   max_value=300.0, value=frame.base_height,
+                                   max_value=300.0,
+                                   value=float(frame.base_height),
                                    step=10.0, key="frame_base")
         new_tc = st.number_input("Top Clearance (mm)", min_value=0.0,
-                                 max_value=200.0, value=frame.top_clearance,
+                                 max_value=200.0,
+                                 value=float(frame.top_clearance),
                                  step=10.0, key="frame_tc")
 
         frame.width = new_w
@@ -472,23 +478,23 @@ def component_property_editor():
     dc1, dc2, dc3 = st.columns(3)
     comp.dimensions.width = dc1.number_input(
         "Width (mm)", min_value=50.0, max_value=5000.0,
-        value=comp.dimensions.width, step=10.0, key="prop_w")
+        value=float(comp.dimensions.width), step=10.0, key="prop_w")
     comp.dimensions.height = dc2.number_input(
         "Height (mm)", min_value=1.0, max_value=5000.0,
-        value=comp.dimensions.height, step=10.0, key="prop_h")
+        value=float(comp.dimensions.height), step=10.0, key="prop_h")
     comp.dimensions.depth = dc3.number_input(
         "Depth (mm)", min_value=50.0, max_value=1000.0,
-        value=comp.dimensions.depth, step=10.0, key="prop_d")
+        value=float(comp.dimensions.depth), step=10.0, key="prop_d")
 
     # Position
     st.markdown("**Position**")
     pc1, pc2 = st.columns(2)
     comp.position.x = pc1.number_input(
         "X (mm)", min_value=0.0, max_value=5000.0,
-        value=comp.position.x, step=10.0, key="prop_x")
+        value=float(comp.position.x), step=10.0, key="prop_x")
     comp.position.y = pc2.number_input(
         "Y (mm)", min_value=0.0, max_value=5000.0,
-        value=comp.position.y, step=10.0, key="prop_y")
+        value=float(comp.position.y), step=10.0, key="prop_y")
 
     # Type-specific properties
     if isinstance(comp, DrawerUnit):
@@ -527,7 +533,7 @@ def component_property_editor():
                                        key="prop_adj")
         comp.load_capacity = tc2.number_input(
             "Load Capacity (kg)", min_value=1.0, max_value=200.0,
-            value=comp.load_capacity, step=5.0, key="prop_lc")
+            value=float(comp.load_capacity), step=5.0, key="prop_lc")
 
     elif isinstance(comp, Overhead):
         st.markdown("**Overhead Options**")
