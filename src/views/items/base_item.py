@@ -1,6 +1,6 @@
 """Base graphics item for wardrobe components."""
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyleOptionGraphicsItem
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPen, QBrush, QColor, QPainter, QFont
 
 from ...models.component import Component
@@ -14,6 +14,7 @@ class BaseWardrobeItem(QGraphicsRectItem):
 
         self.component = component
         self._resize_handle_size = 10
+        self._is_dragging = False
 
         # Set position and size from model
         self.setRect(0, 0, component.dimensions.width, component.dimensions.height)
@@ -28,6 +29,7 @@ class BaseWardrobeItem(QGraphicsRectItem):
         # Appearance
         self._default_pen = QPen(QColor("#333333"), 2)
         self._selected_pen = QPen(QColor("#0066CC"), 3)
+        self._drag_pen = QPen(QColor("#0066CC"), 2, Qt.DashLine)
         self._fill_color = QColor(component.color)
 
         self.setPen(self._default_pen)
@@ -36,12 +38,18 @@ class BaseWardrobeItem(QGraphicsRectItem):
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget=None):
         """Custom painting with selection highlight and labels."""
         # Draw base rectangle
-        if self.isSelected():
+        if self._is_dragging:
+            painter.setPen(self._drag_pen)
+            drag_fill = QColor(self._fill_color)
+            drag_fill.setAlpha(180)
+            painter.setBrush(QBrush(drag_fill))
+        elif self.isSelected():
             painter.setPen(self._selected_pen)
+            painter.setBrush(self.brush())
         else:
             painter.setPen(self._default_pen)
+            painter.setBrush(self.brush())
 
-        painter.setBrush(self.brush())
         painter.drawRect(self.rect())
 
         # Draw label (flip for readability since Y is inverted)
@@ -88,9 +96,32 @@ class BaseWardrobeItem(QGraphicsRectItem):
         for handle in handles:
             painter.drawRect(handle)
 
+    def mousePressEvent(self, event):
+        """Track drag start."""
+        if event.button() == Qt.LeftButton and not self.component.locked:
+            self._is_dragging = True
+            self.update()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """Track drag end."""
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            self.update()
+        super().mouseReleaseEvent(event)
+
     def itemChange(self, change, value):
-        """Handle item position changes."""
-        if change == QGraphicsItem.ItemPositionHasChanged:
+        """Handle item position changes - snap to grid during drag."""
+        if change == QGraphicsItem.ItemPositionChange:
+            # Snap to grid if scene supports it
+            scene = self.scene()
+            if scene and hasattr(scene, 'snap_to_grid') and scene.snap_to_grid:
+                snapped = scene.snap_position(value)
+                # Update model with snapped position
+                self.component.position.x = snapped.x()
+                self.component.position.y = snapped.y()
+                return snapped
+        elif change == QGraphicsItem.ItemPositionHasChanged:
             self.component.position.x = value.x()
             self.component.position.y = value.y()
         return super().itemChange(change, value)

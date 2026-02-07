@@ -1,15 +1,26 @@
 """Graphics view for the wardrobe canvas."""
 from PySide6.QtWidgets import QGraphicsView
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF
 from PySide6.QtGui import QPainter
 
 from .canvas_scene import CanvasScene
+from ...models.enums import ComponentType
+
+# Default preview sizes for each component type (width, height in mm)
+_COMPONENT_PREVIEW_SIZES = {
+    ComponentType.DRAWER_UNIT: (600, 800),
+    ComponentType.HANGING_SPACE: (800, 1800),
+    ComponentType.SHELF: (800, 18),
+    ComponentType.OVERHEAD: (800, 400),
+    ComponentType.DIVIDER: (18, 2400),
+}
 
 
 class CanvasView(QGraphicsView):
     """The viewport for viewing and interacting with the canvas."""
 
     zoom_changed = Signal(float)
+    component_dropped = Signal(ComponentType, float, float)  # type, x, y
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -93,3 +104,63 @@ class CanvasView(QGraphicsView):
     def set_snap_enabled(self, enabled: bool):
         """Enable or disable snap to grid."""
         self._scene.set_snap_enabled(enabled)
+
+    def _parse_component_type(self, mime_text: str):
+        """Parse component type from drag mime data."""
+        try:
+            return ComponentType[mime_text]
+        except (KeyError, ValueError):
+            return None
+
+    def dragEnterEvent(self, event):
+        """Accept drag if it carries a component type."""
+        mime = event.mimeData()
+        if mime and mime.hasText() and self._parse_component_type(mime.text()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        """Show snap preview as drag moves over the canvas."""
+        mime = event.mimeData()
+        if not mime or not mime.hasText():
+            super().dragMoveEvent(event)
+            return
+
+        comp_type = self._parse_component_type(mime.text())
+        if comp_type is None:
+            super().dragMoveEvent(event)
+            return
+
+        event.acceptProposedAction()
+
+        # Map viewport position to scene coordinates
+        scene_pos = self.mapToScene(event.position().toPoint())
+        w, h = _COMPONENT_PREVIEW_SIZES.get(comp_type, (600, 400))
+        self._scene.show_drop_preview(scene_pos, w, h)
+
+    def dragLeaveEvent(self, event):
+        """Hide preview when drag leaves the canvas."""
+        self._scene.hide_drop_preview()
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        """Handle component drop - emit signal with type and snapped position."""
+        mime = event.mimeData()
+        if not mime or not mime.hasText():
+            super().dropEvent(event)
+            return
+
+        comp_type = self._parse_component_type(mime.text())
+        if comp_type is None:
+            super().dropEvent(event)
+            return
+
+        self._scene.hide_drop_preview()
+
+        # Map to scene coordinates and snap
+        scene_pos = self.mapToScene(event.position().toPoint())
+        snapped = self._scene.snap_position(scene_pos)
+
+        event.acceptProposedAction()
+        self.component_dropped.emit(comp_type, snapped.x(), snapped.y())
