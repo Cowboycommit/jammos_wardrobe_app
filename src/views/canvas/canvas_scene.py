@@ -1,5 +1,5 @@
 """Graphics scene for the wardrobe canvas."""
-from PySide6.QtWidgets import QGraphicsScene
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsRectItem
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF
 from PySide6.QtGui import QPen, QBrush, QColor, QPainter
 
@@ -29,6 +29,9 @@ class CanvasScene(QGraphicsScene):
         # Wardrobe frame dimensions
         self.frame_width = 2400.0
         self.frame_height = 2400.0
+
+        # Drop preview indicator
+        self._drop_preview = None
 
         # Set scene rect with margin
         margin = 200
@@ -109,3 +112,25 @@ class CanvasScene(QGraphicsScene):
     def set_snap_enabled(self, enabled: bool):
         """Enable or disable snap to grid."""
         self.snap_to_grid = enabled
+
+    def show_drop_preview(self, pos: QPointF, width: float, height: float):
+        """Show a preview rectangle where a dropped component will land."""
+        snapped = self.snap_position(pos)
+        if self._drop_preview is None:
+            preview_pen = QPen(QColor("#0066CC"), 2, Qt.DashLine)
+            preview_brush = QBrush(QColor(0, 102, 204, 40))
+            self._drop_preview = self.addRect(
+                snapped.x(), snapped.y(), width, height,
+                preview_pen, preview_brush
+            )
+            self._drop_preview.setZValue(1000)
+        else:
+            self._drop_preview.setRect(
+                snapped.x(), snapped.y(), width, height
+            )
+
+    def hide_drop_preview(self):
+        """Remove the drop preview rectangle."""
+        if self._drop_preview is not None:
+            self.removeItem(self._drop_preview)
+            self._drop_preview = None

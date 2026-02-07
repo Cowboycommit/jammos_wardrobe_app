@@ -94,6 +94,10 @@ class MainWindow(QMainWindow):
         self.grid_action.setChecked(True)
         view_menu.addAction(self.grid_action)
 
+        self.snap_action = self._create_action("&Snap to Grid", "Ctrl+Shift+G", self.toggle_snap, checkable=True)
+        self.snap_action.setChecked(True)
+        view_menu.addAction(self.snap_action)
+
         # Help menu
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self._create_action("&About", "", self.show_about))
@@ -127,6 +131,7 @@ class MainWindow(QMainWindow):
         self.property_panel.property_changed.connect(self._on_property_changed)
         self.property_panel.delete_requested.connect(self.delete_selected)
         self.canvas_view.canvas_scene.selectionChanged.connect(self._on_selection_changed)
+        self.canvas_view.component_dropped.connect(self._on_component_dropped)
 
     def _create_action(self, text, shortcut, slot, checkable=False):
         """Helper to create menu/toolbar actions."""
@@ -166,9 +171,8 @@ class MainWindow(QMainWindow):
         )
         return reply == QMessageBox.Yes
 
-    def _on_component_selected(self, component_type: ComponentType):
-        """Handle component selection from palette - add to canvas."""
-        # Create component based on type
+    def _create_component_and_item(self, component_type: ComponentType):
+        """Create a component model and its corresponding graphics item."""
         if component_type == ComponentType.DRAWER_UNIT:
             component = DrawerUnit.create(name="New Drawers", width=600, height=800, depth=500)
             item = DrawerItem(component)
@@ -182,20 +186,40 @@ class MainWindow(QMainWindow):
             component = Overhead.create(name="Overhead", width=800, height=400, depth=580)
             item = OverheadItem(component)
         else:
+            return None, None
+        return component, item
+
+    def _add_component_at(self, component_type: ComponentType, x: float, y: float):
+        """Create and place a component at the given position."""
+        component, item = self._create_component_and_item(component_type)
+        if component is None:
             self.statusbar.showMessage(f"Component type {component_type} not yet implemented")
             return
 
-        # Position at center of visible area
-        component.position.x = 100
-        component.position.y = 100
-        item.setPos(component.position.x, component.position.y)
+        # Snap position to grid
+        scene = self.canvas_view.canvas_scene
+        from PySide6.QtCore import QPointF
+        snapped = scene.snap_position(QPointF(x, y))
+        component.position.x = snapped.x()
+        component.position.y = snapped.y()
+        item.setPos(snapped.x(), snapped.y())
 
-        # Add to scene and project
-        self.canvas_view.canvas_scene.addItem(item)
+        scene.addItem(item)
         self.project.add_component(component)
 
         self._mark_modified()
         self.statusbar.showMessage(f"Added {component.name}")
+
+    def _on_component_selected(self, component_type: ComponentType):
+        """Handle component selection from palette (click) - add to canvas center."""
+        # Place at the center of the currently visible area
+        viewport_center = self.canvas_view.viewport().rect().center()
+        scene_center = self.canvas_view.mapToScene(viewport_center)
+        self._add_component_at(component_type, scene_center.x(), scene_center.y())
+
+    def _on_component_dropped(self, component_type: ComponentType, x: float, y: float):
+        """Handle component dropped onto canvas from palette."""
+        self._add_component_at(component_type, x, y)
 
     def _on_property_changed(self):
         """Handle property changes from panel."""
@@ -331,6 +355,9 @@ class MainWindow(QMainWindow):
 
     def toggle_grid(self):
         self.canvas_view.set_grid_visible(self.grid_action.isChecked())
+
+    def toggle_snap(self):
+        self.canvas_view.set_snap_enabled(self.snap_action.isChecked())
 
     def show_about(self):
         QMessageBox.about(self, "About Wardrobe Planner",
