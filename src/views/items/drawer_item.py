@@ -20,6 +20,7 @@ class DrawerItem(BaseWardrobeItem):
         # Draw individual drawers
         rect = self.rect()
         drawer_unit: DrawerUnit = self.component
+        offset = self._get_depth_offset()
 
         drawer_pen = QPen(QColor("#8B7355"), 1)
         painter.setPen(drawer_pen)
@@ -27,7 +28,7 @@ class DrawerItem(BaseWardrobeItem):
         y = rect.bottom()
         for i, height in enumerate(drawer_unit.drawer_heights):
             y -= height
-            # Drawer line
+            # Drawer line on front face
             painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
 
             # Handle
@@ -36,3 +37,17 @@ class DrawerItem(BaseWardrobeItem):
             handle_x = rect.center().x() - handle_width / 2
 
             painter.drawRect(QRectF(handle_x, handle_y - 3, handle_width, 6))
+
+        # Extend drawer lines onto the 3D right face
+        if offset > 0:
+            perspective_pen = QPen(QColor("#6B5335"), 1)
+            painter.setPen(perspective_pen)
+
+            y = rect.bottom()
+            for height in drawer_unit.drawer_heights:
+                y -= height
+                # Line from front-right edge to projected point at 45 degrees
+                painter.drawLine(
+                    int(rect.right()), int(y),
+                    int(rect.right() + offset), int(y + offset)
+                )

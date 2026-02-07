@@ -19,9 +19,17 @@ class ShelfItem(BaseWardrobeItem):
 
         shelf: Shelf = self.component
         rect = self.rect()
+        offset = self._get_depth_offset()
 
-        # Draw edge banding line
+        # Draw edge banding line on front face
         edge_pen = QPen(QColor("#8B6914"), 2)
         painter.setPen(edge_pen)
         painter.drawLine(int(rect.left()), int(rect.bottom()),
                         int(rect.right()), int(rect.bottom()))
+
+        # Extend edge banding onto the 3D top face (along the top visual edge)
+        if offset > 0:
+            painter.drawLine(
+                int(rect.right()), int(rect.bottom()),
+                int(rect.right() + offset), int(rect.bottom() + offset)
+            )

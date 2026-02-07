@@ -1,7 +1,7 @@
 """Base graphics item for wardrobe components."""
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyleOptionGraphicsItem
 from PySide6.QtCore import Qt, QRectF, QPointF
-from PySide6.QtGui import QPen, QBrush, QColor, QPainter, QFont
+from PySide6.QtGui import QPen, QBrush, QColor, QPainter, QFont, QPolygonF
 
 from ...models.component import Component
 
@@ -35,9 +35,63 @@ class BaseWardrobeItem(QGraphicsRectItem):
         self.setPen(self._default_pen)
         self.setBrush(QBrush(self._fill_color))
 
+    def _get_depth_offset(self):
+        """Calculate the 3D perspective depth offset based on component depth."""
+        depth = self.component.dimensions.depth
+        return min(depth * 0.15, 80)
+
+    def boundingRect(self):
+        """Expand bounding rect to include 3D perspective lines."""
+        rect = super().boundingRect()
+        offset = self._get_depth_offset()
+        # Expand right (+x) and upward (+y in local coords = visual top with Y-flip)
+        return rect.adjusted(0, 0, offset, offset)
+
+    def _draw_3d_perspective(self, painter: QPainter):
+        """Draw 3D perspective faces from top and right edges at 45 degrees."""
+        rect = self.rect()
+        offset = self._get_depth_offset()
+
+        if offset <= 0:
+            return
+
+        # Front face corners (in local coords; rect.bottom() = visual top due to Y-flip)
+        vtl = QPointF(rect.left(), rect.bottom())       # visual top-left
+        vtr = QPointF(rect.right(), rect.bottom())       # visual top-right
+        vbr = QPointF(rect.right(), rect.top())          # visual bottom-right
+
+        # Projected corners at 45 degrees (up and to the right)
+        ptl = QPointF(rect.left() + offset, rect.bottom() + offset)
+        ptr = QPointF(rect.right() + offset, rect.bottom() + offset)
+        pbr = QPointF(rect.right() + offset, rect.top() + offset)
+
+        perspective_pen = QPen(QColor("#333333"), 1.5)
+        painter.setPen(perspective_pen)
+
+        # Top face (lighter shade to simulate light from above)
+        top_color = QColor(self._fill_color)
+        top_color = top_color.lighter(120)
+        top_color.setAlpha(210)
+        painter.setBrush(QBrush(top_color))
+
+        top_face = QPolygonF([vtl, vtr, ptr, ptl])
+        painter.drawPolygon(top_face)
+
+        # Right face (darker shade to simulate shadow)
+        right_color = QColor(self._fill_color)
+        right_color = right_color.darker(130)
+        right_color.setAlpha(210)
+        painter.setBrush(QBrush(right_color))
+
+        right_face = QPolygonF([vtr, vbr, pbr, ptr])
+        painter.drawPolygon(right_face)
+
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget=None):
-        """Custom painting with selection highlight and labels."""
-        # Draw base rectangle
+        """Custom painting with 3D perspective, selection highlight, and labels."""
+        # Draw 3D perspective faces first (behind the front face)
+        self._draw_3d_perspective(painter)
+
+        # Draw base rectangle (front face)
         if self._is_dragging:
             painter.setPen(self._drag_pen)
             drag_fill = QColor(self._fill_color)
