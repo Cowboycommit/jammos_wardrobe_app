@@ -11,7 +11,7 @@ from .component import Component, Dimensions, Position
 @dataclass
 class WardrobeFrame:
     """The outer frame/carcass of the wardrobe."""
-    width: float = 2400.0       # Total width in mm
+    width: float = 4800.0       # Total width in mm
     height: float = 2400.0      # Total height in mm
     depth: float = 600.0        # Total depth in mm
     panel_thickness: float = 18.0

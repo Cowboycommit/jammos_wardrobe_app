@@ -16,7 +16,7 @@ class ExportService:
         scene: QGraphicsScene,
         file_path: Path,
         title: str = "",
-        frame_width: float = 2400,
+        frame_width: float = 4800,
         frame_height: float = 2400
     ) -> Tuple[bool, str]:
         """
@@ -101,7 +101,7 @@ class ExportService:
         scene: QGraphicsScene,
         file_path: Path,
         width: int = 2000,
-        frame_width: float = 2400,
+        frame_width: float = 4800,
         frame_height: float = 2400
     ) -> Tuple[bool, str]:
         """

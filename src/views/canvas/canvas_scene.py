@@ -23,7 +23,7 @@ class CanvasScene(QGraphicsScene):
         super().__init__(parent)
 
         # Wardrobe frame dimensions
-        self.frame_width = 2400.0
+        self.frame_width = 4800.0
         self.frame_height = 2400.0
         self.frame_depth = 600.0
 

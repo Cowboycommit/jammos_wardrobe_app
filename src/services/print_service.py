@@ -12,7 +12,7 @@ class PrintService:
     def print_with_preview(
         scene: QGraphicsScene,
         parent: QWidget = None,
-        frame_width: float = 2400,
+        frame_width: float = 4800,
         frame_height: float = 2400
     ) -> bool:
         """
@@ -44,7 +44,7 @@ class PrintService:
     def print_direct(
         scene: QGraphicsScene,
         parent: QWidget = None,
-        frame_width: float = 2400,
+        frame_width: float = 4800,
         frame_height: float = 2400
     ) -> bool:
         """
